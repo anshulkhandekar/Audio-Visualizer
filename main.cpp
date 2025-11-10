@@ -3,23 +3,21 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <unistd.h>
 #include <mad.h>
 #include <iostream>
 #include <fftw3.h> 
 #include <cmath>
+#include <cstring>
+
 #define FFT_SIZE 1024
-int ret = 1;
-int error;
-struct mad_stream mad_stream;
-struct mad_frame mad_frame;
-struct mad_synth mad_synth;
 
 #define MAD_F_FULL_24BIT 0x007fffff
 
 int main(int argc, char **argv) {
     
     if (argc != 2) {
-        fprintf(stderr, "Usage: %s [filename.mp3]", argv[0]);
+        fprintf(stderr, "Usage: %s [filename.mp3]\n", argv[0]);
         return 255;
     }
 
@@ -31,6 +29,10 @@ int main(int argc, char **argv) {
 
     //Prepares stream to receive mp3 data
     //Holds data like read pointer, buffer length and byte stream 
+    struct mad_stream mad_stream;
+    struct mad_frame mad_frame;
+    struct mad_synth mad_synth;
+    
     mad_stream_init(&mad_stream);
     //Initializes synthesis structure
     //Converts into pcm data
@@ -56,23 +58,35 @@ int main(int argc, char **argv) {
 
     char *filename = argv[1];
 
-    FILE *fp = fopen(filename, "r");
+    FILE *fp = fopen(filename, "rb");
+    if (!fp) {
+        perror("Failed to open input file");
+        fclose(outfile);
+        return 1;
+    }
+    
     int fd = fileno(fp);
 
     //Gets metadata from file
     //Specifically for file size as libmad needs this for decoding .mp3 files
     struct stat metadata;
-    if (fstat(fd, &metadata) >= 0) {
-        printf("File size %d bytes\n", (int)metadata.st_size);
-    } else {
+    if (fstat(fd, &metadata) < 0) {
         printf("Failed to stat %s\n", filename);
         fclose(fp);
+        fclose(outfile);
         return 254;
     }
+    printf("File size %ld bytes\n", (long)metadata.st_size);
 
     //loads .mp3 into memory
     //Input parameters basically give memory address (0 means system chooses), size, read/write modify access, file descriptor and offset
     const unsigned char* input_stream = (const unsigned char*) mmap(0, metadata.st_size, PROT_READ, MAP_SHARED, fd, 0);
+    if (input_stream == MAP_FAILED) {
+        perror("Failed to mmap file");
+        fclose(fp);
+        fclose(outfile);
+        return 1;
+    }
 
     //Initializes libmad decoder
     mad_stream_buffer(&mad_stream, input_stream, metadata.st_size);
@@ -94,7 +108,7 @@ int main(int argc, char **argv) {
         unsigned int nsamples = mad_synth.pcm.length;
 
         //loops over every synthesized pcm data in frame sample data
-        for(int i = 0; i < nsamples; i++){
+        for(unsigned int i = 0; i < nsamples; i++){
             //extracts pcm data from array and normalizes it to [-1, 1]
             mad_fixed_t pcm_sample = mad_synth.pcm.samples[0][i];
             float normalized_sample = (float)(pcm_sample / (float)MAD_F_FULL_24BIT);
@@ -126,6 +140,7 @@ int main(int argc, char **argv) {
     }
 
     //closes buffers and files
+    munmap((void*)input_stream, metadata.st_size);
     fclose(fp);
 
     mad_synth_finish(&mad_synth);
