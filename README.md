@@ -1,7 +1,7 @@
 # Audio-Visualizer
 CSCE 120 Project (Building an audio visualizer and real-time audio editor in C++)
 
-(Milestone 1 Done) The program will:
+(Milestone 2 Done) The program will:
 1. Decode the MP3 file into PCM samples
 2. Process samples in chunks of 1024 (FFT_SIZE)
 3. Perform FFT analysis on each chunk
