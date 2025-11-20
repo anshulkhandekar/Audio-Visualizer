@@ -29,3 +29,5 @@ The GUI will open with:
 4. Stop button - Stops playback and resets visualization
 5. Frequency Spectrum Chart - Real-time bar chart showing frequency magnitudes
 
+(Milestone 3 Done) The program will:
+
