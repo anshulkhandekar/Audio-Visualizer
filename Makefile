@@ -36,11 +36,11 @@ LDFLAGS = -L/opt/homebrew/opt/fftw/lib \
 TARGET = audio_visualizer
 
 # Source files
-SOURCES = main.cpp AudioDecoder.cpp FFTAnalyzer.cpp AudioPlayer.cpp MainWindow.cpp
-HEADERS = AudioDecoder.h FFTAnalyzer.h AudioPlayer.h MainWindow.h
+SOURCES = main.cpp AudioDecoder.cpp FFTAnalyzer.cpp AudioPlayer.cpp MainWindow.cpp FrequencyFilter.cpp RadialVisualizationWidget.cpp
+HEADERS = AudioDecoder.h FFTAnalyzer.h AudioPlayer.h MainWindow.h FrequencyFilter.h RadialVisualizationWidget.h
 
 # MOC generated files
-MOC_SOURCES = MainWindow.moc.cpp AudioPlayer.moc.cpp
+MOC_SOURCES = MainWindow.moc.cpp AudioPlayer.moc.cpp RadialVisualizationWidget.moc.cpp
 
 # Object files
 OBJECTS = $(SOURCES:.cpp=.o) $(MOC_SOURCES:.cpp=.o)
@@ -53,6 +53,9 @@ MainWindow.moc.cpp: MainWindow.h
 	$(MOC) -o $@ $<
 
 AudioPlayer.moc.cpp: AudioPlayer.h
+	$(MOC) -o $@ $<
+
+RadialVisualizationWidget.moc.cpp: RadialVisualizationWidget.h
 	$(MOC) -o $@ $<
 
 # Compile source files

@@ -6,8 +6,10 @@
 #include <vector>
 #include <string>
 #include <portaudio.h>
+#include <QMutex>
 #include "AudioDecoder.h"
 #include "FFTAnalyzer.h"
+#include "FrequencyFilter.h"
 
 class AudioPlayer : public QObject {
     Q_OBJECT
@@ -34,6 +36,19 @@ public:
     
     // Get total length (in samples)
     size_t getTotalLength() const { return decoder.isLoaded() ? decoder.getSamples().size() : 0; }
+    
+    // Get sample rate
+    unsigned int getSampleRate() const { return decoder.isLoaded() ? decoder.getSampleRate() : 0; }
+    
+    // Filter control methods
+    void setLowPassCutoff(float cutoffHz);
+    void setHighPassCutoff(float cutoffHz);
+    void setBandStop(float lowHz, float highHz);
+    void setBandPass(float lowHz, float highHz);
+    void enableLowPass(bool enabled);
+    void enableHighPass(bool enabled);
+    void enableBandStop(bool enabled);
+    void enableBandPass(bool enabled);
 
 signals:
     // Signal emitted when new FFT data is available
@@ -44,12 +59,21 @@ signals:
 
 private:
     AudioDecoder decoder;
-    FFTAnalyzer fft_analyzer;
+    FFTAnalyzer fft_analyzer; // For visualization
+    FFTAnalyzer audio_filter_fft; // For frequency-domain audio filtering
+    FrequencyFilter frequency_filter;
+    
+    // Buffer for frequency-domain filtering
+    std::vector<float> audio_filter_buffer;
+    size_t audio_filter_buffer_pos;
     
     PaStream* stream;
     bool playing;
     bool paused;
     size_t current_position;
+    
+    // Thread-safe filter parameter updates
+    QMutex filter_mutex;
     
     // PortAudio callback (static, calls instance method)
     static int audioCallback(const void* input, void* output,
