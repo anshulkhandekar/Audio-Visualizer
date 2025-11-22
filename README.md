@@ -31,3 +31,8 @@ The GUI will open with:
 
 (Milestone 3 Done) The program will:
 
+
+
+(Milestone 4 Done) The program will:
+
+
