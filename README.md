@@ -5,6 +5,7 @@ CSCE 120 Project (Building an audio visualizer and real-time audio editor in C++
 This program decodes MP3 audio files into PCM data, performs FFT analysis using FFTW3, and outputs frequency magnitude data to a text file.
 
 (Milestone 1 Done) The program will:
+
 1. Decode the MP3 file into PCM samples
 2. Process samples in chunks of 1024 (FFT_SIZE)
 3. Perform FFT analysis on each chunk
@@ -31,6 +32,11 @@ The GUI will open with:
 
 (Milestone 3 Done) The program will:
 
+1. Sliders to edit out frequencies
+2. Low-pass and high-pass editing features
+3. Band-stop editing feature
+4. Radial plot, histogram, and line plot options
+5. Real-time playback of editing
 
 
 (Milestone 4 Done) The program will:
