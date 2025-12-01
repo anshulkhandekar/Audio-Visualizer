@@ -89,7 +89,7 @@ void MainWindow::setupUI() {
     // Low-pass filter
     lowPassCheckbox = new QCheckBox("Enable", this);
     lowPassSlider = new QSlider(Qt::Horizontal, this);
-    lowPassSlider->setRange(0, 1000);
+    lowPassSlider->setRange(0, 5000);
     lowPassSlider->setValue(0);
     lowPassLabel = new QLabel("0 Hz", this);
     filterLayout->addWidget(new QLabel("Low-Pass (cut above):", this), 0, 0);
@@ -100,7 +100,7 @@ void MainWindow::setupUI() {
     // High-pass filter
     highPassCheckbox = new QCheckBox("Enable", this);
     highPassSlider = new QSlider(Qt::Horizontal, this);
-    highPassSlider->setRange(0, 1000);
+    highPassSlider->setRange(0, 5000);
     highPassSlider->setValue(0);
     highPassLabel = new QLabel("0 Hz", this);
     filterLayout->addWidget(new QLabel("High-Pass (cut below):", this), 1, 0);
@@ -111,11 +111,11 @@ void MainWindow::setupUI() {
     // Band-stop filter
     bandStopCheckbox = new QCheckBox("Enable", this);
     bandStartSlider = new QSlider(Qt::Horizontal, this);
-    bandStartSlider->setRange(0, 1000);
+    bandStartSlider->setRange(0, 5000);
     bandStartSlider->setValue(0);
     bandStartLabel = new QLabel("0 Hz", this);
     bandEndSlider = new QSlider(Qt::Horizontal, this);
-    bandEndSlider->setRange(0, 1000);
+    bandEndSlider->setRange(0, 5000);
     bandEndSlider->setValue(0);
     bandEndLabel = new QLabel("0 Hz", this);
     filterLayout->addWidget(new QLabel("Band-Stop (cut range):", this), 2, 0);
@@ -408,11 +408,11 @@ void MainWindow::updateRadial(const std::vector<float>& magnitudes) {
         return;
     }
     
-    // Update the custom radial widget
+    // Update the custom radial widget with the same smoothed magnitudes
     radialView->updateData(magnitudes);
-    
-    // Update max magnitude for scaling
-    if (maxMagnitudeInitialized) {
+
+    // Use the stabilized maxMagnitude for consistent scaling
+    if (maxMagnitudeInitialized && maxMagnitude > 0.0f) {
         radialView->setMaxMagnitude(maxMagnitude);
     }
 }

@@ -51,39 +51,42 @@ void RadialVisualizationWidget::drawPolarPlot(QPainter& painter) {
     if (magnitudes.empty()) {
         return;
     }
-    
-    int points_to_show = std::min(64, (int)magnitudes.size());
-    
-    // Draw filled polygon for the spectrum
-    QPolygonF polygon;
-    for (int i = 0; i < points_to_show; i++) {
-        float angle = (360.0f * i) / points_to_show;
-        float angleRad = angle * PI / 180.0f;
-        
-        // Normalize magnitude to 0-1 range based on maxMagnitude
-        float normalizedMag = magnitudes[i] / std::max(maxMagnitude, 1.0f);
-        normalizedMag = std::min(normalizedMag, 1.0f); // Clamp to 1.0
-        
-        float radius = normalizedMag * maxRadius;
-        QPointF point = polarToCartesian(angleRad, radius, center, maxRadius);
-        polygon.append(point);
+
+    // Map a larger subset of magnitudes evenly around the full circle
+    int points_to_show = std::min(256, (int)magnitudes.size());
+    if (points_to_show <= 0) {
+        return;
     }
-    
-    // Close the polygon
-    if (!polygon.isEmpty()) {
-        polygon.append(polygon.first());
+
+    // Compute a local max for this frame so the ring \"breathes\" with the music
+    float localMax = 0.0f;
+    for (int i = 0; i < points_to_show; ++i) {
+        localMax = std::max(localMax, magnitudes[i]);
     }
-    
-    // Draw filled area
-    QColor fillColor(100, 150, 255, 150); // Semi-transparent blue
-    painter.setBrush(QBrush(fillColor));
-    painter.setPen(QPen(Qt::blue, 2));
-    painter.drawPolygon(polygon);
-    
-    // Draw outline
-    painter.setPen(QPen(Qt::darkBlue, 2));
+    if (localMax <= 0.0f) {
+        return;
+    }
+
+    // Small base radius so quiet frames are still visible, but variation stands out
+    float baseRadius = maxRadius * 0.05f;
+    float dynamicRadius = maxRadius - baseRadius;
+
+    // Draw individual radial spikes
     painter.setBrush(Qt::NoBrush);
-    painter.drawPolygon(polygon);
+    painter.setPen(QPen(Qt::darkBlue, 2));
+
+    for (int i = 0; i < points_to_show; i++) {
+        float angleRad = 2.0f * PI * static_cast<float>(i) / static_cast<float>(points_to_show);
+
+        // Normalize magnitude to 0-1 range based on this frame's local max
+        float normalizedMag = magnitudes[i] / localMax;
+        normalizedMag = std::max(0.0f, std::min(normalizedMag, 1.0f)); // Clamp to [0, 1]
+
+        float radius = baseRadius + normalizedMag * dynamicRadius;
+
+        QPointF endPoint = polarToCartesian(angleRad, radius, center, maxRadius);
+        painter.drawLine(center, endPoint);
+    }
     
     // Draw center point
     painter.setBrush(QBrush(Qt::black));

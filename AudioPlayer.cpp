@@ -4,9 +4,7 @@
 #include <QMutexLocker>
 
 AudioPlayer::AudioPlayer(QObject* parent)
-    : QObject(parent), stream(nullptr), playing(false), paused(false), current_position(0),
-      audio_filter_buffer_pos(0) {
-    audio_filter_buffer.resize(FFT_SIZE, 0.0f);
+    : QObject(parent), stream(nullptr), playing(false), paused(false), current_position(0) {
     if (!initializePortAudio()) {
         std::cerr << "Failed to initialize PortAudio" << std::endl;
     }
@@ -94,12 +92,9 @@ bool AudioPlayer::startPlayback() {
         return false;
     }
     
-    // Reset FFT analyzers and filter
+    // Reset FFT analyzer and filter
     fft_analyzer.reset();
-    audio_filter_fft.reset();
     frequency_filter.reset();
-    audio_filter_buffer_pos = 0;
-    std::fill(audio_filter_buffer.begin(), audio_filter_buffer.end(), 0.0f);
     
     // Update filter sample rate
     frequency_filter.setLowPassCutoff(0, sample_rate);
@@ -129,10 +124,7 @@ void AudioPlayer::stopPlayback() {
     paused = false;
     current_position = 0;
     fft_analyzer.reset();
-    audio_filter_fft.reset();
     frequency_filter.reset();
-    audio_filter_buffer_pos = 0;
-    std::fill(audio_filter_buffer.begin(), audio_filter_buffer.end(), 0.0f);
 }
 
 void AudioPlayer::pausePlayback() {
@@ -187,101 +179,30 @@ int AudioPlayer::processAudio(const void* input, void* output, unsigned long fra
     // Copy samples to output buffer
     size_t samples_to_copy = std::min((size_t)frameCount, samples.size() - current_position);
     
-    // Get sample rate for filter
+    // Get sample rate for filter/visualization
     unsigned int sample_rate = decoder.getSampleRate();
     
-    // Check if frequency-domain filtering should be used
-    QMutexLocker locker(&filter_mutex);
-    bool useFrequencyDomainFiltering = frequency_filter.isActive();
-    locker.unlock();
-    
-    if (useFrequencyDomainFiltering) {
-        // Use frequency-domain filtering (FFT -> filter -> IFFT)
-        std::vector<float> output_buffer;
-        output_buffer.resize(samples_to_copy * channels, 0.0f);
-        
-        for (size_t i = 0; i < samples_to_copy; i++) {
-            float sample = samples[current_position + i];
-            
-            // Add sample to audio filter buffer
-            audio_filter_buffer[audio_filter_buffer_pos] = sample;
-            audio_filter_buffer_pos++;
-            
-            // Feed original sample to FFT analyzer (for visualization)
-            if (fft_analyzer.addSample(sample)) {
-                // FFT is ready, apply frequency-domain filtering to magnitudes for visualization
-                std::vector<float> magnitudes = fft_analyzer.getMagnitudes();
-                QMutexLocker locker2(&filter_mutex);
+    for (size_t i = 0; i < samples_to_copy; i++) {
+        float sample = samples[current_position + i];
+
+        // Feed original sample to FFT analyzer (for visualization)
+        if (fft_analyzer.addSample(sample)) {
+            std::vector<float> magnitudes = fft_analyzer.getMagnitudes();
+            if (!magnitudes.empty()) {
+                QMutexLocker locker(&filter_mutex);
+                // Apply current filter settings to visualization magnitudes
                 frequency_filter.processFFT(magnitudes, sample_rate);
-                locker2.unlock();
-                emit fftDataReady(magnitudes);
             }
-            
-            // When buffer is full, perform FFT -> filter -> IFFT
-            if (audio_filter_buffer_pos >= FFT_SIZE) {
-                // Perform FFT directly from buffer
-                audio_filter_fft.computeFFTFromBuffer(audio_filter_buffer.data(), FFT_SIZE);
-                
-                // Get complex FFT data and apply filter
-                fftw_complex* fft_data = audio_filter_fft.getFFTOutput();
-                QMutexLocker locker3(&filter_mutex);
-                frequency_filter.processComplexFFT(fft_data, FFT_SIZE, sample_rate);
-                locker3.unlock();
-                
-                // Perform IFFT
-                std::vector<float> filtered_samples;
-                audio_filter_fft.performIFFT(filtered_samples);
-                
-                // Copy filtered samples to output buffer
-                // We need to handle this carefully - the buffer contains samples from previous iterations
-                // For now, we'll output the filtered samples directly
-                size_t output_idx = (i - FFT_SIZE + 1) * channels;
-                if (output_idx < output_buffer.size()) {
-                    for (size_t j = 0; j < filtered_samples.size() && (output_idx + j * channels) < output_buffer.size(); j++) {
-                        for (unsigned int ch = 0; ch < channels; ch++) {
-                            if (output_idx + j * channels + ch < output_buffer.size()) {
-                                output_buffer[output_idx + j * channels + ch] = filtered_samples[j];
-                            }
-                        }
-                    }
-                }
-                
-                // Reset buffer position (keep last half for overlap)
-                size_t overlap = FFT_SIZE / 2;
-                for (size_t j = 0; j < overlap; j++) {
-                    audio_filter_buffer[j] = audio_filter_buffer[FFT_SIZE - overlap + j];
-                }
-                audio_filter_buffer_pos = overlap;
-            } else {
-                // Not enough samples yet, output original
-                for (unsigned int ch = 0; ch < channels; ch++) {
-                    output_buffer[i * channels + ch] = sample;
-                }
-            }
+            emit fftDataReady(magnitudes);
         }
-        
-        // Copy output buffer to PortAudio output
-        memcpy(out, output_buffer.data(), samples_to_copy * channels * sizeof(float));
-    } else {
-        // Use time-domain filtering (original method)
-        for (size_t i = 0; i < samples_to_copy; i++) {
-            float sample = samples[current_position + i];
-            
-            // Apply frequency filter to sample (time-domain filtering)
-            QMutexLocker locker(&filter_mutex);
-            float filtered_sample = frequency_filter.processSample(sample);
-            locker.unlock();
-            
-            // Feed original sample to FFT analyzer (for visualization)
-            if (fft_analyzer.addSample(sample)) {
-                // FFT is ready, emit signal
-                emit fftDataReady(fft_analyzer.getMagnitudes());
-            }
-            
-            // Output filtered sample to all channels (mono or stereo)
-            for (unsigned int ch = 0; ch < channels; ch++) {
-                out[i * channels + ch] = filtered_sample;
-            }
+
+        // Apply FIR filter in time-domain for audio
+        QMutexLocker locker(&filter_mutex);
+        float filtered_sample = frequency_filter.processSample(sample);
+
+        // Output filtered sample to all channels (mono or stereo)
+        for (unsigned int ch = 0; ch < channels; ch++) {
+            out[i * channels + ch] = filtered_sample;
         }
     }
     

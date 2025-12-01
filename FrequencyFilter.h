@@ -67,10 +67,11 @@ private:
     std::vector<float> bandPassDelayLine;
     
     // Helper methods
-    void generateLowPassCoeffs(float cutoffHz, float sampleRate, int filterLength = 101);
-    void generateHighPassCoeffs(float cutoffHz, float sampleRate, int filterLength = 101);
-    void generateBandStopCoeffs(float lowHz, float highHz, float sampleRate, int filterLength = 101);
-    void generateBandPassCoeffs(float lowHz, float highHz, float sampleRate, int filterLength = 101);
+    // Sharper FIR filters (longer length for stronger attenuation)
+    void generateLowPassCoeffs(float cutoffHz, float sampleRate, int filterLength = 257);
+    void generateHighPassCoeffs(float cutoffHz, float sampleRate, int filterLength = 257);
+    void generateBandStopCoeffs(float lowHz, float highHz, float sampleRate, int filterLength = 257);
+    void generateBandPassCoeffs(float lowHz, float highHz, float sampleRate, int filterLength = 257);
     
     // Window function (Blackman window)
     float blackmanWindow(int n, int N);

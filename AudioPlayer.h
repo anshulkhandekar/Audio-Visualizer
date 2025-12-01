@@ -60,12 +60,7 @@ signals:
 private:
     AudioDecoder decoder;
     FFTAnalyzer fft_analyzer; // For visualization
-    FFTAnalyzer audio_filter_fft; // For frequency-domain audio filtering
     FrequencyFilter frequency_filter;
-    
-    // Buffer for frequency-domain filtering
-    std::vector<float> audio_filter_buffer;
-    size_t audio_filter_buffer_pos;
     
     PaStream* stream;
     bool playing;
