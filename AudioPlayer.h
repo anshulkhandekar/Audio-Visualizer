@@ -10,6 +10,7 @@
 #include "AudioDecoder.h"
 #include "FFTAnalyzer.h"
 #include "FrequencyFilter.h"
+#include "AudioExporter.h"
 
 class AudioPlayer : public QObject {
     Q_OBJECT
@@ -39,6 +40,9 @@ public:
     
     // Get sample rate
     unsigned int getSampleRate() const { return decoder.isLoaded() ? decoder.getSampleRate() : 0; }
+    
+    // Export current edited audio to a WAV file (applies current filter settings offline)
+    bool exportEditedToWav(const std::string& path);
     
     // Filter control methods
     void setLowPassCutoff(float cutoffHz);

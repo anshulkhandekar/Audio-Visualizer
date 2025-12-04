@@ -33,9 +33,14 @@ void AudioPlayer::cleanupPortAudio() {
 }
 
 bool AudioPlayer::loadFile(const std::string& filename) {
+    // Ensure any existing playback is stopped and state reset
     stopPlayback();
     current_position = 0;
-    return decoder.loadFile(filename);
+    bool ok = decoder.loadFile(filename);
+    if (!ok) {
+        std::cerr << "Failed to decode audio file: " << filename << std::endl;
+    }
+    return ok;
 }
 
 bool AudioPlayer::startPlayback() {
@@ -215,6 +220,43 @@ int AudioPlayer::processAudio(const void* input, void* output, unsigned long fra
     current_position += samples_to_copy;
     
     return paContinue;
+}
+
+bool AudioPlayer::exportEditedToWav(const std::string& path) {
+    if (!decoder.isLoaded()) {
+        std::cerr << "Cannot export: no file loaded\n";
+        return false;
+    }
+
+    const std::vector<float>& samples = decoder.getSamples();
+    if (samples.empty()) {
+        std::cerr << "Cannot export: decoder has no samples\n";
+        return false;
+    }
+
+    unsigned int sampleRate = decoder.getSampleRate();
+    if (sampleRate == 0) {
+        std::cerr << "Cannot export: invalid sample rate\n";
+        return false;
+    }
+
+    // Copy current filter configuration under mutex
+    FrequencyFilter exportFilter;
+    {
+        QMutexLocker locker(&filter_mutex);
+        exportFilter = frequency_filter; // copy coefficients and flags
+    }
+    // Use fresh delay lines for export so we don't depend on playback state
+    exportFilter.reset();
+
+    std::vector<float> filtered(samples.size(), 0.0f);
+    for (size_t i = 0; i < samples.size(); ++i) {
+        filtered[i] = exportFilter.processSample(samples[i]);
+    }
+
+    // For safety, export as mono even if original was stereo (samples are mono)
+    unsigned int channels = 1;
+    return AudioExporter::exportToWav(path, filtered, sampleRate, channels);
 }
 
 void AudioPlayer::setLowPassCutoff(float cutoffHz) {

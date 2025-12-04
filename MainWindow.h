@@ -39,6 +39,7 @@ private slots:
     void onPlayClicked();
     void onPauseClicked();
     void onStopClicked();
+    void onExportClicked();
     void onFFTDataReady(const std::vector<float>& magnitudes);
     void onPlaybackFinished();
 
@@ -77,6 +78,7 @@ private:
     QPushButton* playButton;
     QPushButton* pauseButton;
     QPushButton* stopButton;
+    QPushButton* exportButton;
     QLabel* statusLabel;
     
     // Tab widget for visualizations

@@ -30,6 +30,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(playButton, &QPushButton::clicked, this, &MainWindow::onPlayClicked);
     connect(pauseButton, &QPushButton::clicked, this, &MainWindow::onPauseClicked);
     connect(stopButton, &QPushButton::clicked, this, &MainWindow::onStopClicked);
+    connect(exportButton, &QPushButton::clicked, this, &MainWindow::onExportClicked);
     
     // Connect filter controls
     connect(lowPassSlider, &QSlider::valueChanged, this, &MainWindow::onLowPassSliderChanged);
@@ -73,11 +74,13 @@ void MainWindow::setupUI() {
     playButton = new QPushButton("Play", this);
     pauseButton = new QPushButton("Pause", this);
     stopButton = new QPushButton("Stop", this);
+    exportButton = new QPushButton("Export Audio", this);
     
     buttonLayout->addWidget(loadButton);
     buttonLayout->addWidget(playButton);
     buttonLayout->addWidget(pauseButton);
     buttonLayout->addWidget(stopButton);
+    buttonLayout->addWidget(exportButton);
     buttonLayout->addStretch();
     
     mainLayout->addLayout(buttonLayout);
@@ -276,6 +279,42 @@ void MainWindow::onStopClicked() {
     maxMagnitudeInitialized = false;
 }
 
+void MainWindow::onExportClicked() {
+    if (!audioPlayer || audioPlayer->getSampleRate() == 0 || audioPlayer->getTotalLength() == 0) {
+        QMessageBox::warning(this, "Export Edited Audio", "No audio loaded to export.");
+        return;
+    }
+
+    QString filePath = QFileDialog::getSaveFileName(
+        this,
+        "Export Edited Audio (WAV)",
+        "",
+        "WAV Files (*.wav)"
+    );
+
+    if (filePath.isEmpty()) {
+        return;
+    }
+
+    statusLabel->setText("Exporting edited audio...");
+    QApplication::processEvents();
+    setPlaybackControlsEnabled(false);
+
+    bool ok = audioPlayer->exportEditedToWav(filePath.toStdString());
+
+    setPlaybackControlsEnabled(true);
+
+    if (ok) {
+        statusLabel->setText("Export complete: " + QFileInfo(filePath).fileName());
+        QMessageBox::information(this, "Export Edited Audio",
+                                 "Successfully exported edited audio to:\n" + filePath);
+    } else {
+        statusLabel->setText("Export failed");
+        QMessageBox::critical(this, "Export Edited Audio",
+                              "Failed to export edited audio. Please check the path and try again.");
+    }
+}
+
 void MainWindow::onFFTDataReady(const std::vector<float>& magnitudes) {
     // Apply smoothing
     std::vector<float> smoothed = smoothMagnitudes(magnitudes);
@@ -421,6 +460,7 @@ void MainWindow::setPlaybackControlsEnabled(bool enabled) {
     playButton->setEnabled(enabled);
     pauseButton->setEnabled(false);
     stopButton->setEnabled(false);
+    exportButton->setEnabled(enabled); // Enable export when file is loaded
 }
 
 void MainWindow::onLowPassSliderChanged(int value) {
