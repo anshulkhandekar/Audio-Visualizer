@@ -2,7 +2,7 @@
 CSCE 120 Project (Building an audio visualizer and real-time audio editor in C++)
 
 ## Description
-This program decodes MP3 audio files into PCM data, performs FFT analysis using FFTW3, and outputs frequency magnitude data to a text file.
+This program decodes MP3 audio files into PCM data, performs FFT analysis using FFTW3, and provides real-time audio visualization and editing capabilities through a Qt-based GUI.
 
 (Milestone 1 Done) The program will:
 
@@ -47,3 +47,88 @@ The GUI will open with:
 4. Status messages for exporting and loading
 5. Can load files back to back without leaking resources
 
+## How to run the program
+
+### Prerequisites
+
+- **CMake** 3.16 or higher
+- **C++ compiler** with C++17 support (GCC 7+, Clang 5+, or MSVC 2017+)
+- **Qt6** (Core, Widgets, Gui, Charts)
+- **FFTW3** library
+- **libmad** library
+- **PortAudio** library
+
+### Quick Start
+
+1. **Install dependencies** (automated):
+   ```bash
+   ./scripts/install_deps.sh
+   ```
+
+2. **Build the project**:
+   ```bash
+   # Option 1: Use the build script (recommended)
+   ./build.sh
+   
+   # Option 2: Manual build
+   mkdir build && cd build
+   cmake ..
+   make
+   ```
+
+3. **Run the application**:
+   ```bash
+   ./build/audio_visualizer
+   ```
+
+### Platform-Specific Instructions
+
+#### macOS
+
+**Using Homebrew** (recommended):
+```bash
+# Install dependencies (includes CMake)
+brew install cmake qtbase qtcharts fftw mad portaudio
+
+# Or use the automated script:
+./scripts/install_deps.sh
+
+# Build
+./build.sh
+```
+
+**Manual Installation**:
+If Homebrew is not available, install the dependencies manually and ensure CMake can find them. You may need to set `CMAKE_PREFIX_PATH`:
+```bash
+cmake -DCMAKE_PREFIX_PATH=/path/to/qt6 ..
+```
+
+#### Linux
+
+**Ubuntu/Debian**:
+```bash
+sudo apt-get update
+sudo apt-get install -y build-essential cmake \
+    qt6-base-dev qt6-charts-dev \
+    libfftw3-dev libmad0-dev portaudio19-dev
+
+./build.sh
+```
+
+**Fedora/RHEL**:
+```bash
+sudo dnf install -y gcc-c++ make cmake \
+    qt6-qtbase-devel qt6-qtcharts-devel \
+    fftw-devel libmad-devel portaudio-devel
+
+./build.sh
+```
+
+**Arch Linux**:
+```bash
+sudo pacman -S --needed base-devel cmake \
+    qt6-base qt6-charts \
+    fftw libmad portaudio
+
+./build.sh
+```
