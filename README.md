@@ -11,19 +11,9 @@ This program decodes MP3 audio files into PCM data, performs FFT analysis using 
 3. Perform FFT analysis on each chunk
 4. Calculate frequency magnitudes
 5. Write results to `output.txt`
-   
-## Output Format
-The `output.txt` file contains frequency bin data in the format:
-```
-Bin 0: Mag = <magnitude>
-Bin 1: Mag = <magnitude>
-...
-```
-Each bin represents a frequency component, with higher bin numbers representing higher frequencies.
 
 (Milestone 2 Done) The program will:
 
-The GUI will open with:
 1. Load File button - Opens a file dialog to select MP3 or WAV files
 2. Play button - Starts playback and visualization
 3. Pause button - Pauses/resumes playback
@@ -38,7 +28,6 @@ The GUI will open with:
 4. Radial plot, histogram, and line plot options
 5. Real-time playback of editing
 
-
 (Milestone 4 Done) The program will:
 
 1. Provide a cleaner visualization for radial plot 
@@ -47,7 +36,7 @@ The GUI will open with:
 4. Status messages for exporting and loading
 5. Can load files back to back without leaking resources
 
-## How to run the program
+## How to run the program:
 
 ### Prerequisites
 
