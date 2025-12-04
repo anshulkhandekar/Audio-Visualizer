@@ -41,4 +41,9 @@ The GUI will open with:
 
 (Milestone 4 Done) The program will:
 
+1. Provide a cleaner visualization for radial plot 
+2. Option to export edited audio to WAV file
+3. Reduced static on band-stop editing feature
+4. Status messages for exporting and loading
+5. Can load files back to back without leaking resources
 
