@@ -39,7 +39,7 @@ private:
     fftw_complex* fftw_out;
     double* ifftw_out; // Output buffer for IFFT
     fftw_plan ifftw_plan_var; // Inverse FFT plan  
-    fftw_plan fftw_plan;
+    fftw_plan fftw_p;
     std::vector<float> magnitudes;
     int sample_count;
     bool ready;

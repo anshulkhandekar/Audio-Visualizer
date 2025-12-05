@@ -1,13 +1,15 @@
 #include "AudioPlayer.h"
 #include <iostream>
 #include <cstring>
+#include <algorithm>
 #include <QMutexLocker>
 
 AudioPlayer::AudioPlayer(QObject* parent)
-    : QObject(parent), stream(nullptr), playing(false), paused(false), current_position(0) {
+    : QObject(parent), stream(nullptr), playing(false), paused(false), current_position(0), volume(1.0f) {
     if (!initializePortAudio()) {
         std::cerr << "Failed to initialize PortAudio" << std::endl;
     }
+    fftEmitTimer.start();
 }
 
 AudioPlayer::~AudioPlayer() {
@@ -35,7 +37,10 @@ void AudioPlayer::cleanupPortAudio() {
 bool AudioPlayer::loadFile(const std::string& filename) {
     // Ensure any existing playback is stopped and state reset
     stopPlayback();
-    current_position = 0;
+    {
+        QMutexLocker locker(&position_mutex);
+        current_position = 0;
+    }
     bool ok = decoder.loadFile(filename);
     if (!ok) {
         std::cerr << "Failed to decode audio file: " << filename << std::endl;
@@ -59,8 +64,11 @@ bool AudioPlayer::startPlayback() {
     }
     
     // Reset position if at end
-    if (current_position >= decoder.getSamples().size()) {
-        current_position = 0;
+    {
+        QMutexLocker locker(&position_mutex);
+        if (current_position >= decoder.getSamples().size()) {
+            current_position = 0;
+        }
     }
     
     // Get audio parameters
@@ -86,7 +94,7 @@ bool AudioPlayer::startPlayback() {
         nullptr, // No input
         &outputParameters,
         sample_rate,
-        paFramesPerBufferUnspecified, // Let PortAudio choose
+        1024, // large buffer for proper visualization
         0, // No flags
         audioCallback,
         this // User data
@@ -127,7 +135,10 @@ void AudioPlayer::stopPlayback() {
     }
     playing = false;
     paused = false;
-    current_position = 0;
+    {
+        QMutexLocker locker(&position_mutex);
+        current_position = 0;
+    }
     fft_analyzer.reset();
     frequency_filter.reset();
 }
@@ -154,8 +165,8 @@ void AudioPlayer::resumePlayback() {
 
 int AudioPlayer::audioCallback(const void* input, void* output,
                                unsigned long frameCount,
-                               const PaStreamCallbackTimeInfo* timeInfo,
-                               PaStreamCallbackFlags statusFlags,
+                                const PaStreamCallbackTimeInfo* timeInfo,
+                                PaStreamCallbackFlags statusFlags,
                                void* userData) {
     AudioPlayer* player = static_cast<AudioPlayer*>(userData);
     return player->processAudio(input, output, frameCount);
@@ -173,8 +184,15 @@ int AudioPlayer::processAudio(const void* input, void* output, unsigned long fra
     float* out = (float*)output;
     unsigned int channels = decoder.getChannels();
     
+    // Get current position (thread-safe)
+    size_t pos;
+    {
+        QMutexLocker locker(&position_mutex);
+        pos = current_position;
+    }
+    
     // Check if we've reached the end
-    if (current_position >= samples.size()) {
+    if (pos >= samples.size()) {
         memset(output, 0, frameCount * channels * sizeof(float));
         playing = false;
         emit playbackFinished();
@@ -182,33 +200,59 @@ int AudioPlayer::processAudio(const void* input, void* output, unsigned long fra
     }
     
     // Copy samples to output buffer
-    size_t samples_to_copy = std::min((size_t)frameCount, samples.size() - current_position);
+    size_t samples_to_copy = std::min((size_t)frameCount, samples.size() - pos);
     
     // Get sample rate for filter/visualization
     unsigned int sample_rate = decoder.getSampleRate();
     
-    for (size_t i = 0; i < samples_to_copy; i++) {
-        float sample = samples[current_position + i];
+    // Track if we need to emit FFT data (do this outside the mutex to avoid blocking)
+    std::vector<float> fftMagnitudesToEmit;
+    bool shouldEmitFFT = false;
+    
+    // Read volume once before the loop to avoid locking inside the loop
+    float current_volume;
+    {
+        QMutexLocker volumeLocker(&volume_mutex);
+        current_volume = volume;
+    }
+    
+    // Lock filter mutex once for the entire buffer to avoid thousands of lock/unlock operations
+    // This is critical for performance - locking per sample causes severe slowdown
+    {
+        QMutexLocker filterLocker(&filter_mutex);
+        
+        for (size_t i = 0; i < samples_to_copy; i++) {
+            float sample = samples[pos + i];
 
-        // Feed original sample to FFT analyzer (for visualization)
-        if (fft_analyzer.addSample(sample)) {
-            std::vector<float> magnitudes = fft_analyzer.getMagnitudes();
-            if (!magnitudes.empty()) {
-                QMutexLocker locker(&filter_mutex);
-                // Apply current filter settings to visualization magnitudes
-                frequency_filter.processFFT(magnitudes, sample_rate);
+            // Feed original sample to FFT analyzer (for visualization)
+            if (fft_analyzer.addSample(sample)) {
+                std::vector<float> magnitudes = fft_analyzer.getMagnitudes();
+                if (!magnitudes.empty()) {
+                    // Apply current filter settings to visualization magnitudes
+                    frequency_filter.processFFT(magnitudes, sample_rate);
+                    fftMagnitudesToEmit = magnitudes;
+                    shouldEmitFFT = true;
+                }
             }
-            emit fftDataReady(magnitudes);
-        }
 
-        // Apply FIR filter in time-domain for audio
-        QMutexLocker locker(&filter_mutex);
-        float filtered_sample = frequency_filter.processSample(sample);
+            // Apply FIR filter in time-domain for audio
+            float filtered_sample = frequency_filter.processSample(sample);
+            
+            // Apply volume (already read outside the loop)
+            filtered_sample *= current_volume;
 
-        // Output filtered sample to all channels (mono or stereo)
-        for (unsigned int ch = 0; ch < channels; ch++) {
-            out[i * channels + ch] = filtered_sample;
+            // Output filtered sample to all channels (mono or stereo)
+            for (unsigned int ch = 0; ch < channels; ch++) {
+                out[i * channels + ch] = filtered_sample;
+            }
         }
+    } // Mutex automatically unlocked here
+    
+    // Emit FFT data outside the mutex to prevent blocking the audio callback
+    // Throttle emissions to prevent signal queue buildup (max ~30 FPS)
+    if (shouldEmitFFT && fftEmitTimer.elapsed() >= FFT_EMIT_INTERVAL_MS) {
+        emit fftDataReady(fftMagnitudesToEmit);
+        fftEmitTimer.restart();
     }
     
     // Zero out remaining frames if we've reached the end
@@ -217,9 +261,35 @@ int AudioPlayer::processAudio(const void* input, void* output, unsigned long fra
                (frameCount - samples_to_copy) * channels * sizeof(float));
     }
     
-    current_position += samples_to_copy;
+    // Update position (thread-safe)
+    {
+        QMutexLocker locker(&position_mutex);
+        current_position = pos + samples_to_copy;
+    }
     
     return paContinue;
+}
+
+void AudioPlayer::seekToPosition(size_t position) {
+    size_t total_length = getTotalLength();
+    if (total_length > 0) {
+        // Clamp position to valid range
+        if (position > total_length) {
+            position = total_length;
+        }
+        
+        // Update position (thread-safe)
+        {
+            QMutexLocker locker(&position_mutex);
+            current_position = position;
+        }
+        
+        // Reset FFT analyzer and filter when seeking
+        fft_analyzer.reset();
+        frequency_filter.reset();
+        
+        emit positionChanged(position);
+    }
 }
 
 bool AudioPlayer::exportEditedToWav(const std::string& path) {
@@ -309,5 +379,11 @@ void AudioPlayer::enableBandStop(bool enabled) {
 void AudioPlayer::enableBandPass(bool enabled) {
     QMutexLocker locker(&filter_mutex);
     frequency_filter.enableBandPass(enabled);
+}
+
+void AudioPlayer::setVolume(float vol) {
+    QMutexLocker locker(&volume_mutex);
+    // Clamp volume between 0.0 and 1.0
+    volume = std::max(0.0f, std::min(1.0f, vol));
 }
 

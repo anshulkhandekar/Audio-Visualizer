@@ -90,7 +90,9 @@ bool AudioDecoder::decodeMP3(const std::string& filename) {
         for (unsigned int i = 0; i < nsamples; i++) {
             // Use left channel (or mono)
             mad_fixed_t pcm_sample = mad_synth.pcm.samples[0][i];
-            float normalized_sample = (float)(pcm_sample / (float)MAD_F_FULL_24BIT);
+            // libmad uses fixed-point format: MAD_F_ONE (0x10000000) = 1.0
+            // Convert to float in range [-1.0, 1.0]
+            float normalized_sample = (float)mad_f_todouble(pcm_sample);
             samples.push_back(normalized_sample);
         }
     }

@@ -21,6 +21,8 @@
 #include <QGroupBox>
 #include <QDoubleSpinBox>
 #include <QMouseEvent>
+#include <QTimer>
+#include <QMutex>
 #include <vector>
 #include <deque>
 #include "AudioPlayer.h"
@@ -40,8 +42,15 @@ private slots:
     void onPauseClicked();
     void onStopClicked();
     void onExportClicked();
-    void onFFTDataReady(const std::vector<float>& magnitudes);
+    void onFFTDataReady(const std::vector<float>& magnitudes); // Stores FFT data (called from audio thread)
+    void onFFTUpdateTimer(); // Updates charts at fixed rate (called from main thread)
     void onPlaybackFinished();
+    void onPositionChanged(size_t position);
+    void onPositionSliderChanged(int value);
+    void onPositionSliderReleased();
+    void updatePositionDisplay();
+    void onVolumeSliderChanged(int value);
+    QString formatTime(size_t samples, unsigned int sampleRate);
 
 private:
     void setupUI();
@@ -80,6 +89,17 @@ private:
     QPushButton* stopButton;
     QPushButton* exportButton;
     QLabel* statusLabel;
+    
+    // Position scrubber
+    QSlider* positionSlider;
+    QLabel* positionLabel;
+    QLabel* durationLabel;
+    QTimer* positionUpdateTimer;
+    bool isUserScrubbing;
+    
+    // Volume control
+    QSlider* volumeSlider;
+    QLabel* volumeLabel;
     
     // Tab widget for visualizations
     QTabWidget* tabWidget;
@@ -126,6 +146,11 @@ private:
     bool maxMagnitudeInitialized;
     static constexpr int SMA_WINDOW_SIZE = 5;
     static constexpr float EMA_ALPHA = 0.3f;
+    
+    // FFT update throttling to prevent signal queue buildup
+    std::vector<float> latestFFTData; // Latest FFT data from audio thread
+    QMutex fftDataMutex; // Protect latestFFTData from concurrent access
+    QTimer* fftUpdateTimer; // Timer to update charts at fixed rate (30 FPS)
     
     // Click-and-drag state
     bool isDragging;

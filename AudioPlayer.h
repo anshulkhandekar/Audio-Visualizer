@@ -7,6 +7,7 @@
 #include <string>
 #include <portaudio.h>
 #include <QMutex>
+#include <QElapsedTimer>
 #include "AudioDecoder.h"
 #include "FFTAnalyzer.h"
 #include "FrequencyFilter.h"
@@ -33,13 +34,22 @@ public:
     bool isPaused() const { return paused; }
     
     // Get current position (in samples)
-    size_t getCurrentPosition() const { return current_position; }
+    size_t getCurrentPosition() const {
+        QMutexLocker locker(&position_mutex);
+        return current_position;
+    }
     
     // Get total length (in samples)
     size_t getTotalLength() const { return decoder.isLoaded() ? decoder.getSamples().size() : 0; }
     
+    // Seek to a specific position (in samples)
+    void seekToPosition(size_t position);
+    
     // Get sample rate
     unsigned int getSampleRate() const { return decoder.isLoaded() ? decoder.getSampleRate() : 0; }
+    
+    // Set volume (0.0 to 1.0)
+    void setVolume(float volume);
     
     // Export current edited audio to a WAV file (applies current filter settings offline)
     bool exportEditedToWav(const std::string& path);
@@ -60,6 +70,9 @@ signals:
     
     // Signal emitted when playback finishes
     void playbackFinished();
+    
+    // Signal emitted when position changes (for UI updates)
+    void positionChanged(size_t position);
 
 private:
     AudioDecoder decoder;
@@ -73,6 +86,17 @@ private:
     
     // Thread-safe filter parameter updates
     QMutex filter_mutex;
+    
+    // Thread-safe position updates
+    mutable QMutex position_mutex;
+    
+    // Thread-safe volume updates
+    float volume;
+    mutable QMutex volume_mutex;
+    
+    // FFT signal throttling (emit at most every ~33ms = ~30 FPS)
+    QElapsedTimer fftEmitTimer;
+    static constexpr int FFT_EMIT_INTERVAL_MS = 33;
     
     // PortAudio callback (static, calls instance method)
     static int audioCallback(const void* input, void* output,

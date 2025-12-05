@@ -9,7 +9,7 @@ FFTAnalyzer::FFTAnalyzer()
     ifftw_out = (double*) fftw_malloc(sizeof(double) * FFT_SIZE);
     
     // Create FFT plan (real to complex)
-    fftw_plan = fftw_plan_dft_r2c_1d(FFT_SIZE, fftw_in, fftw_out, FFTW_ESTIMATE);
+    fftw_p = fftw_plan_dft_r2c_1d(FFT_SIZE, fftw_in, fftw_out, FFTW_ESTIMATE);
     
     // Create IFFT plan (complex to real)
     ifftw_plan_var = fftw_plan_dft_c2r_1d(FFT_SIZE, fftw_out, ifftw_out, FFTW_ESTIMATE);
@@ -23,7 +23,7 @@ FFTAnalyzer::FFTAnalyzer()
 }
 
 FFTAnalyzer::~FFTAnalyzer() {
-    fftw_destroy_plan(fftw_plan);
+    fftw_destroy_plan(fftw_p);
     fftw_destroy_plan(ifftw_plan_var);
     fftw_free(fftw_in);
     fftw_free(fftw_out);
@@ -50,7 +50,7 @@ bool FFTAnalyzer::addSample(float sample) {
 
 void FFTAnalyzer::computeFFT() {
     // Execute FFT
-    fftw_execute(fftw_plan);
+    fftw_execute(fftw_p);
     
     // Calculate magnitudes
     for (int k = 0; k < (FFT_SIZE / 2 + 1); k++) {
@@ -73,7 +73,7 @@ void FFTAnalyzer::computeFFTFromBuffer(const float* buffer, int size) {
     }
     
     // Execute FFT
-    fftw_execute(fftw_plan);
+    fftw_execute(fftw_p);
     
     // Calculate magnitudes
     for (int k = 0; k < (FFT_SIZE / 2 + 1); k++) {

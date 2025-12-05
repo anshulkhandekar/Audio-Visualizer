@@ -44,8 +44,6 @@ private:
     size_t file_size;
     int file_descriptor;
     
-    static constexpr int MAD_F_FULL_24BIT = 0x007fffff;
-    
     bool decodeMP3(const std::string& filename);
     void cleanup();
 };
