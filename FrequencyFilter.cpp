@@ -9,11 +9,11 @@ FrequencyFilter::FrequencyFilter()
       bandStopLow(0.0f), bandStopHigh(0.0f),
       bandPassLow(0.0f), bandPassHigh(0.0f),
       currentSampleRate(44100.0f) {
-    // Initialize delay lines with reasonable default size
-    lowPassDelayLine.resize(101, 0.0f);
-    highPassDelayLine.resize(101, 0.0f);
-    bandStopDelayLine.resize(101, 0.0f);
-    bandPassDelayLine.resize(101, 0.0f);
+    // Initialize delay lines to match default filter length (257)
+    lowPassDelayLine.resize(257, 0.0f);
+    highPassDelayLine.resize(257, 0.0f);
+    bandStopDelayLine.resize(257, 0.0f);
+    bandPassDelayLine.resize(257, 0.0f);
 }
 
 FrequencyFilter::~FrequencyFilter() {
@@ -24,6 +24,8 @@ void FrequencyFilter::setLowPassCutoff(float cutoffHz, float sampleRate) {
     currentSampleRate = sampleRate;
     if (cutoffHz > 0 && cutoffHz < sampleRate / 2) {
         generateLowPassCoeffs(cutoffHz, sampleRate);
+        // Reset delay line when parameters change to avoid transients
+        std::fill(lowPassDelayLine.begin(), lowPassDelayLine.end(), 0.0f);
     }
 }
 
@@ -32,6 +34,8 @@ void FrequencyFilter::setHighPassCutoff(float cutoffHz, float sampleRate) {
     currentSampleRate = sampleRate;
     if (cutoffHz > 0 && cutoffHz < sampleRate / 2) {
         generateHighPassCoeffs(cutoffHz, sampleRate);
+        // Reset delay line when parameters change to avoid transients
+        std::fill(highPassDelayLine.begin(), highPassDelayLine.end(), 0.0f);
     }
 }
 
@@ -41,6 +45,8 @@ void FrequencyFilter::setBandStop(float lowHz, float highHz, float sampleRate) {
     currentSampleRate = sampleRate;
     if (lowHz > 0 && highHz > lowHz && highHz < sampleRate / 2) {
         generateBandStopCoeffs(lowHz, highHz, sampleRate);
+        // Reset delay line when parameters change to avoid transients
+        std::fill(bandStopDelayLine.begin(), bandStopDelayLine.end(), 0.0f);
     }
 }
 
@@ -50,6 +56,8 @@ void FrequencyFilter::setBandPass(float lowHz, float highHz, float sampleRate) {
     currentSampleRate = sampleRate;
     if (lowHz > 0 && highHz > lowHz && highHz < sampleRate / 2) {
         generateBandPassCoeffs(lowHz, highHz, sampleRate);
+        // Reset delay line when parameters change to avoid transients
+        std::fill(bandPassDelayLine.begin(), bandPassDelayLine.end(), 0.0f);
     }
 }
 
@@ -72,6 +80,11 @@ float FrequencyFilter::processSample(float sample) {
     if (lowPassEnabled && !lowPassCoeffs.empty()) {
         output = applyFIR(lowPassCoeffs, lowPassDelayLine, output);
     }
+    
+    // Clamp output to prevent clipping and distortion
+    // Audio samples should be in range [-1.0, 1.0]
+    if (output > 1.0f) output = 1.0f;
+    if (output < -1.0f) output = -1.0f;
     
     return output;
 }
@@ -199,30 +212,60 @@ void FrequencyFilter::generateLowPassCoeffs(float cutoffHz, float sampleRate, in
 }
 
 void FrequencyFilter::generateHighPassCoeffs(float cutoffHz, float sampleRate, int filterLength) {
+    // High-pass filter: h_hp[n] = δ[n] - h_lp[n]
+    // First generate low-pass coefficients, then subtract from impulse
     highPassCoeffs.resize(filterLength);
     float nyquist = sampleRate / 2.0f;
     float normalizedCutoff = cutoffHz / nyquist;
     
     int center = filterLength / 2;
     
+    // Generate low-pass coefficients first
+    std::vector<float> lowPassTemp(filterLength);
     for (int i = 0; i < filterLength; i++) {
         int n = i - center;
         if (n == 0) {
-            highPassCoeffs[i] = 1.0f - 2.0f * normalizedCutoff;
+            lowPassTemp[i] = 2.0f * normalizedCutoff;
         } else {
-            highPassCoeffs[i] = -2.0f * normalizedCutoff * sinc(2.0f * normalizedCutoff * n);
+            lowPassTemp[i] = 2.0f * normalizedCutoff * sinc(2.0f * normalizedCutoff * n);
         }
-        highPassCoeffs[i] *= blackmanWindow(i, filterLength);
+        lowPassTemp[i] *= blackmanWindow(i, filterLength);
     }
     
-    // Normalize coefficients
-    float sum = 0.0f;
-    for (float coeff : highPassCoeffs) {
-        sum += coeff;
+    // Normalize low-pass coefficients
+    float lpSum = 0.0f;
+    for (float coeff : lowPassTemp) {
+        lpSum += coeff;
     }
-    if (sum > 0.0f) {
+    if (lpSum > 0.0f) {
+        for (float& coeff : lowPassTemp) {
+            coeff /= lpSum;
+        }
+    }
+    
+    // Create high-pass: δ[n] - lowpass[n]
+    for (int i = 0; i < filterLength; i++) {
+        if (i == center) {
+            highPassCoeffs[i] = 1.0f - lowPassTemp[i];
+        } else {
+            highPassCoeffs[i] = -lowPassTemp[i];
+        }
+    }
+    
+    // For high-pass, we want unity gain at high frequencies
+    // The sum should be close to 0 (DC rejection), so we normalize by the magnitude
+    // at Nyquist frequency instead. However, a simpler approach is to ensure
+    // the filter doesn't amplify by checking the maximum coefficient magnitude.
+    // Since high-pass filters naturally have sum ≈ 0, we normalize by the sum of absolute values
+    // to prevent amplification while maintaining the filter shape.
+    float absSum = 0.0f;
+    for (float coeff : highPassCoeffs) {
+        absSum += std::abs(coeff);
+    }
+    if (absSum > 1.0f) {
+        // Normalize to prevent amplification
         for (float& coeff : highPassCoeffs) {
-            coeff /= sum;
+            coeff /= absSum;
         }
     }
     
@@ -334,6 +377,11 @@ float FrequencyFilter::applyFIR(const std::vector<float>& coeffs, std::vector<fl
     float output = 0.0f;
     for (size_t i = 0; i < coeffs.size(); i++) {
         output += coeffs[i] * delayLine[i];
+    }
+    
+    // Safety check: prevent NaN/Inf
+    if (!std::isfinite(output)) {
+        output = 0.0f;
     }
     
     return output;
