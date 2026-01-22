@@ -1,5 +1,5 @@
 # Audio-Visualizer
-CSCE 120 Project (Building an audio visualizer and real-time audio editor in C++)
+Attempting to build a working audio visualizer purely in C/C++.
 
 ## Description
 This program decodes MP3 audio files into PCM data, performs FFT analysis using FFTW3, and provides real-time audio visualization and editing capabilities through a Qt-based GUI.
